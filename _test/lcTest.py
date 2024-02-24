@@ -3,7 +3,7 @@ import gpiozero
 import time
 
 # Load Cell parameters
-lc_const = 2940 / 8388608
+lc_const = 2940 / 4194304
 
 DT_PIN = 10
 SCK_PIN = 22

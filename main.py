@@ -1,311 +1,111 @@
-import RPi.GPIO as gpio
+#!/usr/bin/env python3
+from datetime import datetime
+
+from nicegui import run, ui
+import csv
+import gpiozero
+import pymongo
 import time
 
-RS =18
-EN =23
-D4 =24
-D5 =25
-D6 =8
-D7 =7
-DT =27
-SCK=17
-m1=12
-m2=16
-HIGH=1
-LOW=0
-sample=0
-val=0
-
-gpio.setwarnings(False)
-gpio.setmode(gpio.BCM)
-gpio.setup(RS, gpio.OUT)
-gpio.setup(EN, gpio.OUT)
-gpio.setup(D4, gpio.OUT)
-gpio.setup(D5, gpio.OUT)
-gpio.setup(D6, gpio.OUT)
-gpio.setup(D7, gpio.OUT)
-gpio.setup(m1, gpio.OUT)
-gpio.setup(m2, gpio.OUT)
-gpio.setup(SCK, gpio.OUT)
-gpio.output(m1 , 0)
-gpio.output(m2 , 0)
-
-def begin():
-  lcdcmd(0x33)
-  lcdcmd(0x32)
-  lcdcmd(0x06)
-  lcdcmd(0x0C)
-  lcdcmd(0x28)
-  lcdcmd(0x01)
-  time.sleep(0.0005)
-
-def lcdcmd(ch):
-  gpio.output(RS, 0)
-  gpio.output(D4, 0)
-  gpio.output(D5, 0)
-  gpio.output(D6, 0)
-  gpio.output(D7, 0)
-  if ch&0x10==0x10:
-    gpio.output(D4, 1)
-  if ch&0x20==0x20:
-    gpio.output(D5, 1)
-  if ch&0x40==0x40:
-    gpio.output(D6, 1)
-  if ch&0x80==0x80:
-    gpio.output(D7, 1)
-  gpio.output(EN, 1)
-  time.sleep(0.005)
-  gpio.output(EN, 0)
-
-  # Low bits
-  gpio.output(D4, 0)
-  gpio.output(D5, 0)
-  gpio.output(D6, 0)
-  gpio.output(D7, 0)
-
-  if ch&0x01==0x01:
-    gpio.output(D4, 1)
-  if ch&0x02==0x02:
-
-    gpio.output(D5, 1)
-
-  if ch&0x04==0x04:
-
-    gpio.output(D6, 1)
-
-  if ch&0x08==0x08:
-
-    gpio.output(D7, 1)
-
-  gpio.output(EN, 1)
-
-  time.sleep(0.005)
-
-  gpio.output(EN, 0)
-
-def lcdwrite(ch):
-
-  gpio.output(RS, 1)
-
-  gpio.output(D4, 0)
-
-  gpio.output(D5, 0)
-
-  gpio.output(D6, 0)
-
-  gpio.output(D7, 0)
-
-  if ch&0x10==0x10:
-
-    gpio.output(D4, 1)
-
-  if ch&0x20==0x20:
-
-    gpio.output(D5, 1)
-
-  if ch&0x40==0x40:
-
-    gpio.output(D6, 1)
-
-  if ch&0x80==0x80:
-
-    gpio.output(D7, 1)
-
-  gpio.output(EN, 1)
-
-  time.sleep(0.005)
-
-  gpio.output(EN, 0)
-
-  # Low bits
-
-  gpio.output(D4, 0)
-
-  gpio.output(D5, 0)
-
-  gpio.output(D6, 0)
-
-  gpio.output(D7, 0)
-
-  if ch&0x01==0x01:
-
-    gpio.output(D4, 1)
-
-  if ch&0x02==0x02:
-
-    gpio.output(D5, 1)
-
-  if ch&0x04==0x04:
-
-    gpio.output(D6, 1)
-
-  if ch&0x08==0x08:
-
-    gpio.output(D7, 1)
-
-  gpio.output(EN, 1)
-
-  time.sleep(0.005)
-
-  gpio.output(EN, 0)
-
-def lcdclear():
-
-  lcdcmd(0x01)
-
-def lcdprint(Str):
-
-  l=0;
-
-  l=len(Str)
-
-  for i in range(l):
-
-    lcdwrite(ord(Str[i]))
-
-def setCursor(x,y):
-
-    if y == 0:
-
-        n=128+x
-
-    elif y == 1:
-
-        n=192+x
-
-    lcdcmd(n)
-
-def readCount():
-
-
-  i=0
-
-  Count=0
-
- # print Count
-
- # time.sleep(0.001)
-
-  gpio.setup(DT, gpio.OUT)
-
-  gpio.output(DT,1)
-
-  gpio.output(SCK,0)
-
-  gpio.setup(DT, gpio.IN)
-
-  while gpio.input(DT) == 1:
-
-      i=0
-
-  for i in range(24):
-
-        gpio.output(SCK,1)
-
-        Count=Count<<1
-
-        gpio.output(SCK,0)
-
-        #time.sleep(0.001)
-
-        if gpio.input(DT) == 0:
-
-            Count=Count+1
-
-            #print Count
-
-  gpio.output(SCK,1)
-
-  Count=Count^0x800000
-
-  #time.sleep(0.001)
-
-  gpio.output(SCK,0)
-
-  return Count
-
-begin()
-
-lcdcmd(0x01)
-
-lcdprint(" Automatic Gate ")
-
-lcdcmd(0xc0)
-
-lcdprint("    Using RPI   ")
-
-time.sleep(3)
-
-lcdcmd(0x01)
-
-lcdprint("Circuit Digest")
-
-lcdcmd(0xc0)
-
-lcdprint("Welcomes You")
-
-time.sleep(3)
-
-sample= readCount()
-
-flag=0
-
-lcdclear()
-
-while 1:
-
-  count= readCount()
-
-  w=0
-
-  w=(count-sample)/106
-
-  print w,"g"
-
-  if w>100:
-
-    setCursor(0,0)
-
-    lcdprint("Gate Opened ")
-
-    if flag == 0:
-
-      gpio.output(m1, 1)
-
-      gpio.output(m2, 0)
-
-      time.sleep(1.3)
-
-      gpio.output(m1, 0)
-
-      gpio.output(m2, 0)
-
-      time.sleep(1.5)
-
-      flag=1;
-
-      lcdclear()
-
-  elif w<100:
-
-    setCursor(0,0)
-
-    lcdprint("Gate Closed ")
-
-    if flag==1:
-
-      gpio.output(m1, 0)
-
-      gpio.output(m2, 1)
-
-      time.sleep(1.3)
-
-      gpio.output(m1, 0)
-
-      gpio.output(m2, 0)
-
-      time.sleep(2)
-
-      flag=0
-
-  time.sleep(0.5)
+class dbComm:
+  def __init__(self, host="JFS-MAIN", port=27017, db_name='mt'):
+    self.client = pymongo.MongoClient(host, port)
+    self.db = self.client[db_name]
+
+class lcComm:
+  def __init__(self, dbComm):
+    self.lc_const = 2940 / 4194304
+    self.lc_offset = 0
+    self.DT_PIN = 10
+    self.SCK_PIN = 22
+    self.sck = gpiozero.OutputDevice(self.SCK_PIN)
+    self.dt = gpiozero.InputDevice(self.DT_PIN)
+    self.vals = []
+    self.times = []
+    self.dbComm = dbComm
+    # Create document for session data
+    rec = {
+      'time': time.time(),
+      'lcDat': [],
+    }
+    self.coll = self.dbComm.db['test_data']
+    self.datRec = self.coll.insert_one(rec).inserted_id
+  def getLC(self):
+    try:
+      while getLCstat == 'ON':
+        Count = 0
+        self.sck.off()
+        while self.dt.value == 1:
+          time.sleep(0.005)
+        for i in range(24):
+          start_counter = time.perf_counter()
+          self.sck.on()
+          self.sck.off()
+          end_counter = time.perf_counter()
+          time_elapsed = float(end_counter - start_counter)
+          Count = (Count << 1) | self.dt.value
+
+        # calculate int from 2's complement
+        signed_data = 0
+        if (Count & 0x800000):  # 0b1000 0000 0000 0000 0000 0000 check if the sign bit is 1. Negative number.
+          signed_data = -((Count ^ 0xffffff) + 1)  # convert from 2's complement to int
+        else:  # else do not do anything the value is positive number
+          signed_data = Count
+        self.curLCval = round(float(signed_data * self.lc_const), 3)  - self.lc_offset
+        self.curTime = round(time.time(), 3)
+        self.coll.update_one({'_id': self.datRec}, {'$push': [self.curTime, self.curLCval]})
+        time.sleep(0.2)
+        #print(load)
+    except:
+      print('Get LC Fail')
+
+  def tare(self):
+    self.lc_offset = self.curLCval
+
+    outfilepath = f'./TestResult_{round(time.time())}.csv'
+    with open(outfilepath, 'w', newline='') as file:
+      writer = csv.writer(file)
+      for i, load in enumerate(vals):
+        writer.writerow([times[i], load])
+def setMotors(dir, val):
+  pass
+#
+# async def LoadCellDatLoop():
+#   pass
+
+async def lcGetter():
+  result = await run.cpu_bound(lcComm.getLC())
+
+def updateLinePlot() -> None:
+  lcPlot.push([lcComm.curTime], [[lcComm.curLCval]])
+  lcVal.set_text(str(lcComm.curLCval))
+
+dbComm = dbComm()
+lcComm = lcComm(dbComm)
+getLCstat = ui.label('ON')
+curLCval = 0
+ui.dark_mode().enable()
+ui.label('Mech Tester').classes('text-h1')
+ui.separator()
+with ui.column():
+  with ui.card():
+    ui.label('Manual Actuator Controls')
+    ui.separator()
+    motorSpeed = ui.slider(min=0, max=100, value=80)
+    ui.label().bind_text_from(motorSpeed, 'value')
+    ui.button('UP', on_click=lambda: setMotors(1, motorSpeed.value))
+    ui.button('DOWN', on_click=lambda: setMotors(-1, motorSpeed.value))
+
+  with ui.card():
+    ui.label('Load Cell')
+    ui.separator()
+    lcVal = ui.label('0')
+    #lcVal = ui.label().classes('text-h3').bind_text(target_object= getLC, target_name='curLCval')
+    lcPlot = ui.line_plot(n=1, limit=100, figsize=(15, 10), update_every=1)
+    ui.button('TARE', on_click=lambda: lcComm.tare)
+
+ui.button('Stop LC', on_click=lambda getLCstat: False )
+
+
+
+ui.run()
