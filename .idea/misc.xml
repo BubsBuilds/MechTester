@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.12 (MechTester)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.12 (MechTester)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.11 (MechTester)" project-jdk-type="Python SDK" />
 </project>
