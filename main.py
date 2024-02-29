@@ -22,6 +22,7 @@ class lcComm:
         self.DT_PIN = 10
         self.SCK_PIN = 22
         self.sck = gpiozero.OutputDevice(self.SCK_PIN)
+        time.sleep(0.001)
         self.dt = gpiozero.InputDevice(self.DT_PIN)
         self.vals = []
         self.times = []
@@ -60,7 +61,9 @@ class lcComm:
               else:  # else do not do anything the value is positive number
                   signed_data = Count
               self.curLCval = round(float(signed_data * self.lc_const), 3) - self.lc_offset
+              self.vals.append(self.curLCval)
               self.curTime = round(time.time(), 3)
+              self.times.append(self.curTime)
               self.coll.update_one({'_id': self.datRec}, {'$push': {'lcDat': [self.curTime, self.curLCval]}})
               #lcPlot.push([self.curTime], [[self.curLCval]])
               #lcVal.set_text(str(self.curLCval))
@@ -76,8 +79,11 @@ def setMotors(dir, val):
     pass
 
 def updateLinePlot():
-    lcPlot.push([lcSess.curTime], [[lcSess.curLCval]])
-    lcVal.set_text(str(lcSess.curLCval))
+    try:
+        lcPlot.push([lcSess.times], [[lcSess.vals]])
+        lcVal.set_text(str(lcSess.curLCval))
+    except:
+        pass
 
 def callGetLC():
     lcSess.getLC()
@@ -88,7 +94,7 @@ async def startup(db, lc):
     global lcSess
     dbSess = db
     lcSess = lc
-    lcComm.initdb(dbSess)
+    lcSess.initdb(dbSess)
     ui.dark_mode().enable()
     result = await run.cpu_bound(callGetLC)
 
@@ -111,9 +117,12 @@ with ui.column():
         ui.separator()
         lcVal = ui.label('0')
         # lcVal = ui.label().classes('text-h3').bind_text(target_object= getLC, target_name='curLCval')
-        lcPlot = ui.line_plot(n=1, limit=100, figsize=(10, 5), update_every=5)
-        ui.button('TARE', on_click=lambda: lcComm.tare)
-line_updates = ui.timer(0.5, updateLinePlot, active=True)
+        lcPlot = ui.line_plot(n=1, limit=100, figsize=(10, 5), update_every=5, close=False)
+        ui.button('TARE', on_click=lambda: lcSess.tare)
+try:
+    line_updates = ui.timer(0.5, updateLinePlot, active=True)
+except:
+    pass
 # ui.button('Stop LC', on_click=lambda getLCstat: False)
 
-ui.run()
+ui.run(reload=False)
