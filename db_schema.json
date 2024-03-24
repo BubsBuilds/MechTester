@@ -1,0 +1,13 @@
+# MechTesterController Defaults
+{
+  "ts": <float>,
+  ""
+}
+
+# MechTesterController Session Record
+{
+  "ts": <float>,
+  "settings": {
+
+}
+}
