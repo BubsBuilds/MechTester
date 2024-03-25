@@ -3,8 +3,10 @@ from datetime import datetime
 
 from nicegui import app, run, ui
 import csv
-import gpiozero
+from datetime import datetime
+import json
 import pymongo
+import serial
 import time
 
 class dbComm:
@@ -12,94 +14,65 @@ class dbComm:
         self.client = pymongo.MongoClient(host, port)
         self.db = self.client[db_name]
 
+class mechController:
+    def __init__(self, serial_port='/dev/ttyUSB0', baud_rate=9600):
+        self.ser = serial.Serial(serial_port, baud_rate)
+        self.log_file = "command_log.json"
+        self.commands_log = []
+        self.lcCal = 2940 / 4194304
+        time.sleep(2)
 
-class lcComm:
+    def send_command(self, command):
+        self.ser.write(command.encode())
+        time.sleep(0.1)
+        confirmation = self.ser.readline().decode().strip()
+        self.log_command(command, confirmation)
+        return confirmation
 
-    def __init__(self):
-        self.active = True
-        self.lc_const = 2940 / 4194304
-        self.lc_offset = 0
-        self.DT_PIN = 10
-        self.SCK_PIN = 22
-        self.sck = gpiozero.OutputDevice(self.SCK_PIN)
-        time.sleep(0.001)
-        self.dt = gpiozero.InputDevice(self.DT_PIN)
-        self.vals = []
-        self.times = []
-        self.curLCval = 0
-        self.curTime = time.time()
+    def log_command(self, command, confirmation):
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_entry = {"timestamp": timestamp, "command": command, "confirmation": confirmation}
+        self.commands_log.append(log_entry)
+        with open(self.log_file, 'w') as file:
+            json.dump(self.commands_log, file, indent=4)
 
-    def initdb(self, db):
-        self.dbComm = db
-        # Create document for session data
-        rec = {
-            'time': time.time(),
-            'lcDat': [],
-        }
-        self.coll = self.dbComm.db['test_data']
-        self.datRec = self.coll.insert_one(rec).inserted_id
+    def set_motor(self, motor, direction, speed):
+        speed = round(speed / 100 * 255)
+        command = f"M{motor}{direction}{speed}\n"
+        self.send_command(command)
 
-    def getLC(self):
-        # try:
-          while self.active:
-              Count = 0
-              self.sck.off()
-              while self.dt.value == 1:
-                  time.sleep(0.005)
-              for i in range(24):
-                  start_counter = time.perf_counter()
-                  self.sck.on()
-                  self.sck.off()
-                  end_counter = time.perf_counter()
-                  time_elapsed = float(end_counter - start_counter)
-                  Count = (Count << 1) | self.dt.value
+    def read_scale(self):
+        newVal = float(self.send_command("HXREAD\n").split(" ")[1])
+        newVal = newVal * self.lcCal
+        curTime = time.time()
+        return newVal, curTime
 
-              # calculate int from 2's complement
-              signed_data = 0
-              if (Count & 0x800000):  # 0b1000 0000 0000 0000 0000 0000 check if the sign bit is 1. Negative number.
-                  signed_data = -((Count ^ 0xffffff) + 1)  # convert from 2's complement to int
-              else:  # else do not do anything the value is positive number
-                  signed_data = Count
-              self.curLCval = round(float(signed_data * self.lc_const), 3) - self.lc_offset
-              self.vals.append(self.curLCval)
-              self.curTime = round(time.time(), 3)
-              self.times.append(self.curTime)
-              self.coll.update_one({'_id': self.datRec}, {'$push': {'lcDat': [self.curTime, self.curLCval]}})
-              #lcPlot.push([self.curTime], [[self.curLCval]])
-              #lcVal.set_text(str(self.curLCval))
-              time.sleep(0.2)
-              # print(load)
-        # except:
-        #     print('Get LC Fail')
+    def tare_scale(self):
+        self.send_command("HXTARE\n")
 
-    def tare(self):
-        self.lc_offset = self.curLCval
+    def close(self):
+        self.ser.close()
 
-def setMotors(dir, val):
-    pass
-
-def updateLinePlot():
-    try:
-        lcPlot.push([lcSess.times], [[lcSess.vals]])
-        lcVal.set_text(str(lcSess.curLCval))
-    except:
-        pass
-
-def callGetLC():
-    lcSess.getLC()
+def updateLinePlot(mc):
+    newVal, curTime = mc.read_scale()
+    lcVals.append(newVal)
+    lcTimes.append(curTime)
+    lcPlot.push([lcTimes], [[lcVals]])
+    lcVal.set_text(str(newVal))
 
 
-async def startup(db, lc):
+async def startup(db, mc):
     global dbSess
-    global lcSess
+    global mcSess
+    global lcVals
+    global lcTimes
     dbSess = db
-    lcSess = lc
-    lcSess.initdb(dbSess)
+    mcSess = mc
+    lcVals = []
+    lcTimes = []
     ui.dark_mode().enable()
-    result = await run.cpu_bound(callGetLC)
 
-
-app.on_startup(startup(dbComm(), lcComm()))
+app.on_startup(startup(dbComm(), mechController()))
 
 ui.label('Mech Tester').classes('text-h1')
 ui.separator()
@@ -119,10 +92,11 @@ with ui.column():
         # lcVal = ui.label().classes('text-h3').bind_text(target_object= getLC, target_name='curLCval')
         lcPlot = ui.line_plot(n=1, limit=100, figsize=(10, 5), update_every=5, close=False)
         ui.button('TARE', on_click=lambda: lcSess.tare)
+        calVal = ui.label(str(2940 / 4194304))
 try:
-    line_updates = ui.timer(0.5, updateLinePlot, active=True)
+    line_updates = ui.timer(0.5, updateLinePlot(mcSess), active=True)
 except:
     pass
 # ui.button('Stop LC', on_click=lambda getLCstat: False)
 
-ui.run(reload=False)
+ui.run()
