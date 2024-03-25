@@ -7,23 +7,22 @@ import gpiozero
 import pymongo
 import time
 
-class dbComm:
-    def __init__(self, host="JFS-MAIN", port=27017, db_name='mt'):
-        self.client = pymongo.MongoClient(host, port)
-        self.db = self.client[db_name]
-
-
-class lcComm:
-
+class LCcomms:
     def __init__(self):
-        self.active = True
+
+        # Static LC vals
+        self.samplePeriod = 0.2 # Time required between queries
         self.lc_const = 2940 / 4194304
         self.lc_offset = 0
         self.DT_PIN = 10
         self.SCK_PIN = 22
+
+        # Initialize pins
         self.sck = gpiozero.OutputDevice(self.SCK_PIN)
         time.sleep(0.001)
         self.dt = gpiozero.InputDevice(self.DT_PIN)
+
+
         self.vals = []
         self.times = []
         self.curLCval = 0
@@ -75,54 +74,38 @@ class lcComm:
     def tare(self):
         self.lc_offset = self.curLCval
 
-def setMotors(dir, val):
-    pass
+class MotorComms:
+    def __init__(self):
+        # Motor controller static params
 
-def updateLinePlot():
-    try:
-        lcPlot.push([lcSess.times], [[lcSess.vals]])
-        lcVal.set_text(str(lcSess.curLCval))
-    except:
+        # Init pins
         pass
 
-def callGetLC():
-    lcSess.getLC()
+    def setMotors(dir, val):
+        pass
 
+class MechTesterController:
+    def __init__(self):
+        # Init db and start session record.
+        # Configure database
+        self.dbclient = pymongo.MongoClient(host="JFS-MAIN", port=27017)
+        self.db = self.dbclient['mt']
+        self.dbSessColl = self.db['mt_sess']
+        # Create document for session data
+        rec = {
+            'ts': time.time(),
+            'settings': {
+                "logging": False,
+                "limit": 1500,
+                "state": "OL",
+                "cl_params": {
+                    "target": 100,
+                    "type": "compression",
+                }
+            }
+        }
+        self.sessRecID = self.dbSessColl.insert_one(rec).inserted_id
 
-async def startup(db, lc):
-    global dbSess
-    global lcSess
-    dbSess = db
-    lcSess = lc
-    lcSess.initdb(dbSess)
-    ui.dark_mode().enable()
-    result = await run.cpu_bound(callGetLC)
+        # Init Load Cell communication
+        lc = LCcomms()
 
-
-app.on_startup(startup(dbComm(), lcComm()))
-
-ui.label('Mech Tester').classes('text-h1')
-ui.separator()
-with ui.column():
-    with ui.card():
-        ui.label('Manual Actuator Controls')
-        ui.separator()
-        motorSpeed = ui.slider(min=0, max=100, value=80)
-        ui.label().bind_text_from(motorSpeed, 'value')
-        ui.button('UP', on_click=lambda: setMotors(1, motorSpeed.value))
-        ui.button('DOWN', on_click=lambda: setMotors(-1, motorSpeed.value))
-
-    with ui.card():
-        ui.label('Load Cell')
-        ui.separator()
-        lcVal = ui.label('0')
-        # lcVal = ui.label().classes('text-h3').bind_text(target_object= getLC, target_name='curLCval')
-        lcPlot = ui.line_plot(n=1, limit=100, figsize=(10, 5), update_every=5, close=False)
-        ui.button('TARE', on_click=lambda: lcSess.tare)
-try:
-    line_updates = ui.timer(0.5, updateLinePlot, active=True)
-except:
-    pass
-# ui.button('Stop LC', on_click=lambda getLCstat: False)
-
-ui.run(reload=False)

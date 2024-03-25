@@ -32,13 +32,16 @@ void setup() {
 void loop() {
   if (Serial.available() > 0) {
     String command = Serial.readStringUntil('\n');
-
+    //Serial.println("Command received: " + command.substring(2));
     if (command.startsWith("MA") || command.startsWith("MB")) {
       handleMotorCommand(command);
     } else if (command.startsWith("HX")) {
       handleScaleCommand(command);
     }
   }
+  //long reading = scale.read();
+  //Serial.println(reading);
+  //delay(200);
 }
 
 void handleMotorCommand(String command) {
@@ -52,14 +55,20 @@ void handleMotorCommand(String command) {
   char dir = command.charAt(2);
   int speed = command.substring(3).toInt();
 
-  if (dir == 'F') {
-    digitalWrite(pin1, HIGH);
-    digitalWrite(pin2, LOW);
+  if (dir == 'R') {
+    digitalWrite(motorA1, HIGH);
+    digitalWrite(motorA2, LOW);
+    digitalWrite(motorB1, HIGH);
+    digitalWrite(motorB2, LOW);
+
   } else {
-    digitalWrite(pin1, LOW);
-    digitalWrite(pin2, HIGH);
+    digitalWrite(motorA1, LOW);
+    digitalWrite(motorA2, HIGH);
+    digitalWrite(motorB1, LOW);
+    digitalWrite(motorB2, HIGH);
   }
-  analogWrite(pwmPin, speed);
+  analogWrite(motorAPWM, speed);
+  analogWrite(motorBPWM, speed);
   
   Serial.println("Command executed: " + command);
 }
@@ -67,6 +76,7 @@ void handleMotorCommand(String command) {
 void handleScaleCommand(String command) {
   if (command.substring(2) == "READ") {
     long reading = scale.read();
+    delay(200);
     Serial.println("HX711 Reading: " + String(reading));
   } else if (command.substring(2) == "TARE") {
     scale.tare();
