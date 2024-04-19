@@ -99,6 +99,7 @@ void handleScaleCommand(String command) {
     //Serial.println("HX711 Reading: " + String(lcVal));
     Serial.println("<<lc><"+String(lcVal)+">>");
     dispSenseVal = analogRead(dispSensePin);
+    delay(20);
     Serial.println("<<ds><"+String(dispSenseVal)+">>");
   }
 }
@@ -108,25 +109,25 @@ void handleLCCommand(String command){
   long target = command.substring(3).toInt();
   bool cont = true;
   while (cont == true) {
-    handleScaleCommand("HXREAD");
+    handleScaleCommand("HXALL");
     
     if (dir == 'T'){
-      handleMotorCommand("MAR175");
-      delay(25);
+      handleMotorCommand("MAR200");
+      delay(2);
       handleMotorCommand("MAS0");
       if (lcVal >= target){
         cont = false;
         handleMotorCommand("MAS0");
-        Serial.println("<<cl><end>>");
+        Serial.println("<<lt><end>>");
       }
     }else if (dir == 'C'){
-      handleMotorCommand("MAF175");
-      delay(25);
+      handleMotorCommand("MAF200");
+      delay(2);
       handleMotorCommand("MAS0");
       if (lcVal <= target){
         cont = false;
         handleMotorCommand("MAS0");
-        Serial.println("<<cl><end>>");
+        Serial.println("<<lt><end>>");
       }
     }
   }
