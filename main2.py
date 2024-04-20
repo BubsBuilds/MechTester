@@ -29,13 +29,14 @@ class mechController:
         self.log_file = "command_log.json"
         self.dbSess = dbComm()
         self.commands_log = []
-        self.dt_jog = .1
-        self.lcCal = 2940 / 4194304
+        self.dt_jog = .05
+        self.lcCal = -2940 / 4194304
         self.lcVals = []
         self.lcTimes = []
         self.lcVal = 0
         self.lcTime = time.time()
-        time.sleep(2)
+        self.ltCycles = 5
+        #time.sleep(1)
 
     def send_command(self, command):
         self.ser.write(command.encode())
@@ -55,6 +56,8 @@ class mechController:
 
         # Return the list in the desired format
         return id_value_list
+    #def response_handler(self, retList):
+
 
     def log_command(self, command, confirmation):
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -63,9 +66,9 @@ class mechController:
         with open(self.log_file, 'w') as file:
             json.dump(self.commands_log, file, indent=4)
 
-    def set_motor(self, motor, direction, speed):
+    def set_motor(self, motor, load_direction, speed):
         speed = round(speed / 100 * 255)
-        command = f"M{motor}{direction}{speed}\n"
+        command = f"M{motor}{load_direction}{speed}\n"
         self.send_command(command)
         time.sleep(self.dt_jog)
         self.send_command(f"MAS0\n")
@@ -80,15 +83,16 @@ class mechController:
 
     def tare_scale(self):
         self.send_command("HXTARE\n")
+        #time.sleep()
 
     def load_test(self, test_name, test_desc, test_part, test_type, test_limit):
         if test_type == 1:
             test_type = "C"
         elif test_type == 2:
             test_type = "T"
-        i = 0
-        extras = 50
-        #Set up load test records
+        loop_count = 0
+        cur_limit = test_limit
+        load_dir = "load"
         param_rec = {
             'start_time': time.time(),
             'end_time': time.time(),
@@ -98,54 +102,86 @@ class mechController:
             'type': test_type,
             'load_limit': test_limit,
             'lc_cal': self.lcCal,
+            'load_direction': load_dir,
         }
-        dat_rec = {
-            'load_times': [],
-            'disp_times': [],
-            'loads': [],
-            'disps': [],
-        }
-        runL = True
-
-        self.send_command(f"CL{test_type}{round(test_limit * self.lcCal)}\n")
-        while runL or i <= extras:
-            if self.ser.in_waiting:
-                response = self.ser.readline().decode()
-                parsed = self.parse_command(response)
-                if parsed[0] == 'lc':
-                    dat_rec['load_times'].append(time.time())
-                    load = float(parsed[1]) * self.lcCal
-                    self.lcVal = load
-                    self.lcVals.append(load)
-                    self.lcTimes.append(time.time())
-                    dat_rec['loads'].append(load)
-                elif parsed[0] == 'ds':
-                    dat_rec['disp_times'].append(time.time())
-                    dat_rec['disps'].append(float(parsed[1]))
-                elif parsed[0] == 'lt':
-                    param_rec['end_time'] = time.time()
-                    runL = False
-                else:
-                    print(f"Command error. Response received: {response}")
-            if not runL:
-                parsed = self.send_command(f"HXALL\n")
-                i += 1
-                if parsed[0] == 'lc':
-                    dat_rec['load_times'].append(time.time())
-                    load = float(parsed[1]) * self.lcCal
-                    self.lcVal = load
-                    self.lcVals.append(load)
-                    self.lcTimes.append(time.time())
-                    dat_rec['loads'].append(load)
-                elif parsed[0] == 'ds':
-                    dat_rec['disp_times'].append(time.time())
-                    dat_rec['disps'].append(float(parsed[1]))
-                else:
-                    print(f"Command error. Parsed received: {parsed}")
         param_rec_id = self.dbSess.ltParamColl.insert_one(param_rec).inserted_id
         print(f"Parameters recorded at: {param_rec_id}")
-        dat_rec_id = self.dbSess.datColl.insert_one(dat_rec).inserted_id
-        print(f"Data recorded at: {dat_rec_id}")
+        while loop_count <= self.ltCycles:
+            i = 0
+            extras = 50
+            # Start by taring the load cell
+            time.sleep(2)
+            self.tare_scale()
+            time.sleep(2)
+            #Set up load test record
+
+            dat_rec = {
+                'load_times': [],
+                'disp_times': [],
+                'loads': [],
+                'disps': [],
+                'load_direction': load_dir,
+                'param_rec_id': param_rec_id,
+            }
+            runL = True
+            self.send_command(f"CL{test_type}{round(cur_limit / self.lcCal)}\n")
+            while runL or i <= extras:
+                if self.ser.in_waiting:
+                    response = self.ser.readline().decode()
+                    parsed = self.parse_command(response)
+                    if parsed[0] == 'lc':
+                        dat_rec['load_times'].append(time.time())
+                        load = float(parsed[1]) * self.lcCal
+                        self.lcVal = load
+                        self.lcVals.append(load)
+                        self.lcTimes.append(time.time())
+                        print(f"Current load: {load}")
+                        dat_rec['loads'].append(load)
+                    elif parsed[0] == 'ds':
+                        dat_rec['disp_times'].append(time.time())
+                        dat_rec['disps'].append(float(parsed[1]))
+                        print(f"Current Disp: {float(parsed[1])}")
+                    elif parsed[0] == 'lt':
+                        param_rec['end_time'] = time.time()
+                        if load_dir == "unload":
+                            if test_type == "T":
+                                self.set_motor("A", "R", 75)
+                                time.sleep(0.02)
+                                self.set_motor("A", "S", 0)
+                        runL = False
+                    else:
+                        #print(f"Command error. Response received: {response}")
+                        pass
+                if not runL:
+                    parsed = self.send_command(f"HXALL\n")
+                    i += 1
+                    if parsed[0] == 'lc':
+                        dat_rec['load_times'].append(time.time())
+                        load = float(parsed[1]) * self.lcCal
+                        self.lcVal = load
+                        self.lcVals.append(load)
+                        self.lcTimes.append(time.time())
+                        dat_rec['loads'].append(load)
+                    elif parsed[0] == 'ds':
+                        dat_rec['disp_times'].append(time.time())
+                        dat_rec['disps'].append(float(parsed[1]))
+                    else:
+                        print(f"Command error. Parsed received: {parsed}")
+            loop_count += 1
+            dat_rec_id = self.dbSess.datColl.insert_one(dat_rec).inserted_id
+            print(f"Data recorded at: {dat_rec_id}")
+
+
+            if test_type == "C":
+                test_type = "T"
+            elif test_type == "T":
+                test_type = "C"
+            if load_dir == "load":
+                load_dir = "unload"
+                cur_limit = 0
+            elif load_dir == "unload":
+                load_dir = "load"
+                cur_limit = test_limit
         return [param_rec_id, dat_rec_id]
 
     def get_lc(self):

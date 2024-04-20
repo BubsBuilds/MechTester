@@ -16,6 +16,8 @@ const int LOADCELL_DOUT_PIN = 4;
 const int LOADCELL_SCK_PIN = 5;
 long lcVal;
 HX711 scale;
+long lcTareOff = 0;
+int lcTareCount = 5;
 
 int dispSenseVal;
 int dispSensePin = A0;
@@ -86,13 +88,20 @@ void handleMotorCommand(String command) {
 
 void handleScaleCommand(String command) {
   if (command.substring(2) == "READ") {
-    lcVal = scale.read();
+    lcVal = scale.read() - lcTareOff;
     delay(200);
     //Serial.println("HX711 Reading: " + String(lcVal));
     Serial.println("<<lc><"+String(lcVal)+">>");
   } else if (command.substring(2) == "TARE") {
-    scale.tare();
-    Serial.println("HX711 Tare done.");
+    long lcSum = 0;
+    int tareInc = 0;
+    while (tareInc < lcTareCount){
+      lcSum = lcSum + scale.read();
+      delay(200);
+      tareInc = tareInc + 1;
+    }
+    lcTareOff = lcSum / lcTareCount;
+    Serial.println("<<lc_tare><"+String(lcTareOff)+">>");
   } else if (command.substring(2) == "ALL") {
     lcVal = scale.read();
     delay(200);
