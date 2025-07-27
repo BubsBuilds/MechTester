@@ -35,7 +35,7 @@ class mechController:
         self.lcTimes = []
         self.lcVal = 0
         self.lcTime = time.time()
-        self.ltCycles = 5
+        self.ltCycles = 1
         #time.sleep(1)
 
     def send_command(self, command):
@@ -106,13 +106,14 @@ class mechController:
         }
         param_rec_id = self.dbSess.ltParamColl.insert_one(param_rec).inserted_id
         print(f"Parameters recorded at: {param_rec_id}")
+        time.sleep(2)
+        self.tare_scale()
+        time.sleep(2)
         while loop_count <= self.ltCycles:
             i = 0
             extras = 50
             # Start by taring the load cell
-            time.sleep(2)
-            self.tare_scale()
-            time.sleep(2)
+
             #Set up load test record
 
             dat_rec = {
@@ -167,7 +168,7 @@ class mechController:
                         dat_rec['disps'].append(float(parsed[1]))
                     else:
                         print(f"Command error. Parsed received: {parsed}")
-            loop_count += 1
+
             dat_rec_id = self.dbSess.datColl.insert_one(dat_rec).inserted_id
             print(f"Data recorded at: {dat_rec_id}")
 
@@ -179,6 +180,7 @@ class mechController:
             if load_dir == "load":
                 load_dir = "unload"
                 cur_limit = 0
+                loop_count += 1
             elif load_dir == "unload":
                 load_dir = "load"
                 cur_limit = test_limit
