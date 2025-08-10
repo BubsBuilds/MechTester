@@ -19,8 +19,8 @@ HX711 scale;
 long lcTareOff = 0;
 int lcTareCount = 5;
 
-int dispSenseVal;
-int dispSensePin = A0;
+// int dispSenseVal;
+// int dispSensePin = A0;
 
 void setup() {
   Serial.begin(115200);
@@ -88,19 +88,21 @@ void handleMotorCommand(String command) {
 
 void handleScaleCommand(String command) {
   if (command.substring(2) == "READ") {
-    lcVal = scale.read() - lcTareOff;
+    lcVal = scale.read(); // - lcTareOff;
     delay(200);
     //Serial.println("HX711 Reading: " + String(lcVal));
     Serial.println("<<lc><"+String(lcVal)+">>");
   } else if (command.substring(2) == "TARE") {
-    long lcSum = 0;
-    int tareInc = 0;
-    while (tareInc < lcTareCount){
-      lcSum = lcSum + scale.read();
-      delay(200);
-      tareInc = tareInc + 1;
-    }
-    lcTareOff = lcSum / lcTareCount;
+    // long lcSum = 0;
+    // int tareInc = 0;
+    // while (tareInc < lcTareCount){
+    //   lcSum = lcSum + scale.read();
+    //   delay(200);
+    //   tareInc = tareInc + 1;
+    // }
+    // lcTareOff = lcSum / lcTareCount;
+    scale.tare(10);
+    lcTareOff = scale.get_tare();
     Serial.println("<<lc_tare><"+String(lcTareOff)+">>");
   } else if (command.substring(2) == "ALL") {
     lcVal = scale.read();
@@ -122,7 +124,7 @@ void handleLCCommand(String command){
     
     if (dir == 'T'){
       handleMotorCommand("MAR200");
-      delay(10);
+      delay(5);
       handleMotorCommand("MAS0");
       if (lcVal >= target){
         cont = false;
@@ -131,9 +133,56 @@ void handleLCCommand(String command){
       }
     }else if (dir == 'C'){
       handleMotorCommand("MAF200");
-      delay(10);
+      delay(5);
       handleMotorCommand("MAS0");
       if (lcVal <= target){
+        cont = false;
+        handleMotorCommand("MAS0");
+        Serial.println("<<lt><end>>");
+      }
+    }
+  }
+}
+
+void handleL2F(String command){
+  // Load to Failure cycle
+  char dir = command.charAt(2);
+  long target = command.substring(3).toInt();
+  bool cont = true;
+  long prev[3] = {0, 0, 0};
+  long cur[3] = {0, 0, 0};
+  long avg_prev;
+  long avg_cur;
+  int change;
+  int thresh_change = -25;
+  int i = 0;
+  while (cont == true) {
+    if (i > 0){
+      prev[0] = prev[1];
+      prev[1] = prev[2];
+      prev[2] = cur[0];
+      cur[0] = cur[1];
+      cur[1] = cur[2];
+    }
+    handleScaleCommand("HXALL");
+    cur[2] = lcVal;
+    avg_prev = (prev[0] + prev[1] + prev[2]) / 3;
+    avg_cur = (cur[0] + cur[1] + cur[2]) / 3;
+    change = (avg_cur - avg_prev) * 100 / avg_prev;
+    if (dir == 'T'){
+      handleMotorCommand("MAR200");
+      delay(5);
+      handleMotorCommand("MAS0");
+      if (change >= thresh_change){
+        cont = false;
+        handleMotorCommand("MAS0");
+        Serial.println("<<lt><end>>");
+      }
+    }else if (dir == 'C'){
+      handleMotorCommand("MAF200");
+      delay(5);
+      handleMotorCommand("MAS0");
+      if (change <= thresh_change){
         cont = false;
         handleMotorCommand("MAS0");
         Serial.println("<<lt><end>>");

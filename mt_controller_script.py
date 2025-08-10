@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
 from datetime import datetime
 
-from nicegui import app, run, ui
 import csv
 from datetime import datetime
 import json
@@ -22,6 +20,7 @@ class dbComm:
             'data_recs': [],
         }
         self.sessRecID = self.dbSessColl.insert_one(self.sessHead).inserted_id
+        print(f'Session record created at: {self.sessRecID}')
 
 class mechController:
     def __init__(self, serial_port='COM6', baud_rate=115200):
@@ -80,6 +79,7 @@ class mechController:
         self.lcTime = time.time()
         self.lcVals.append(self.lcVal)
         self.lcTimes.append(self.lcTime)
+        return newVal
 
     def tare_scale(self):
         self.send_command("HXTARE\n")
@@ -90,7 +90,7 @@ class mechController:
             test_type = "C"
         elif test_type == 2:
             test_type = "T"
-        loop_count = 1
+        loop_count = 0
         cur_limit = test_limit
         load_dir = "load"
         param_rec = {
@@ -141,13 +141,13 @@ class mechController:
                     elif parsed[0] == 'ds':
                         dat_rec['disp_times'].append(time.time())
                         dat_rec['disps'].append(float(parsed[1]))
-                        #print(f"Current Disp: {float(parsed[1])}")
+                        print(f"Current Disp: {float(parsed[1])}")
                     elif parsed[0] == 'lt':
                         param_rec['end_time'] = time.time()
                         if load_dir == "unload":
                             if test_type == "T":
                                 self.set_motor("A", "R", 75)
-                                time.sleep(0.2)
+                                time.sleep(0.02)
                                 self.set_motor("A", "S", 0)
                         runL = False
                     else:
@@ -172,7 +172,6 @@ class mechController:
             dat_rec_id = self.dbSess.datColl.insert_one(dat_rec).inserted_id
             print(f"Data recorded at: {dat_rec_id}")
 
-
             if test_type == "C":
                 test_type = "T"
             elif test_type == "T":
@@ -192,54 +191,8 @@ class mechController:
     def close(self):
         self.ser.close()
 
-def updateLinePlot(mcSess):
-    #mcSess.read_scale()
-    #time.sleep(0.2)
-    try:
-        lcPlot.push(mcSess.lcTimes, [mcSess.lcVals])
-        lcVal.set_text(str(mcSess.lcVal))
-    except:
-        pass
-
-async def startup():
-    ui.dark_mode().enable()
-
-async def run_test(mcSessp, lt_name, lt_desc, lt_part, lt_type, lt_limit):
-    result = await run.cpu_bound(mcSessp.load_test(lt_name, lt_desc, lt_part, lt_type, lt_limit))
-    ui.notify(f'Test Completed at {time.time()}')
-
-# dbSess = dbComm()
-mcSess = mechController()
-app.on_startup(startup())
-
-ui.label('Mech Tester').classes('text-h1')
-ui.separator()
-with ui.column():
-    with ui.card():
-        ui.label('Manual Actuator Controls')
-        ui.separator()
-        motorSpeed = ui.slider(min=0, max=100, value=80)
-        ui.label().bind_text_from(motorSpeed, 'value')
-        ui.button('UP', on_click=lambda: mcSess.set_motor('A', 'R', int(motorSpeed.value)))
-        ui.button('DOWN', on_click=lambda: mcSess.set_motor('A', 'F', int(motorSpeed.value)))
-        ui.button('STOP', on_click=lambda: mcSess.set_motor('A','F', int(0)))
-        ui.separator()
-        lt_name = ui.input(placeholder='Test Name').props('rounded outlined dense')
-        lt_part = ui.input(placeholder='Part Name').props('rounded outlined dense')
-        lt_desc = ui.textarea(value='Test Description').props('clearable')
-        lt_type = ui.radio({1: 'Compression', 2: 'Tension'}, value=1).props('inline')
-        lt_limit = ui.slider(min=-500, max=500, value=0)
-        ui.label().bind_text_from(lt_limit, 'value')
-        ui.button('RUN', on_click=lambda: run_test(mcSess, lt_name.value, lt_desc.value, lt_part.value, lt_type.value, lt_limit.value))
-
-    with ui.card():
-        ui.label('Load Cell')
-        ui.separator()
-        lcVal = ui.label('0')
-        # lcVal = ui.label().classes('text-h3').bind_text(target_object= getLC, target_name='curLCval')
-        lcPlot = ui.line_plot(n=1, limit=100, figsize=(10, 5), update_every=1, close=False)
-        ui.button('TARE', on_click=lambda: mcSess.tare_scale())
-        calVal = ui.label(str(2940 / 4194304))
-line_updates = ui.timer(0.5, lambda: updateLinePlot(mcSess), active=True)
-
-ui.run(reload=False)
+if __name__ == "__main__":
+    mc_sess = mechController()
+    ret = mc_sess.read_scale()
+    print(ret)
+    mc_sess.close()

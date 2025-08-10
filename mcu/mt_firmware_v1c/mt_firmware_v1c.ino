@@ -19,8 +19,8 @@ HX711 scale;
 long lcTareOff = 0;
 int lcTareCount = 5;
 
-int dispSenseVal;
-int dispSensePin = A0;
+// int dispSenseVal;
+// int dispSensePin = A0;
 
 void setup() {
   Serial.begin(115200);
@@ -45,6 +45,8 @@ void loop() {
       handleScaleCommand(command);
     } else if (command.startsWith("CL")){
       handleLCCommand(command);
+    } else if (command.startsWith("LF")){
+      handleL2F(command);
     }
   }
   //long reading = scale.read();
@@ -88,23 +90,25 @@ void handleMotorCommand(String command) {
 
 void handleScaleCommand(String command) {
   if (command.substring(2) == "READ") {
-    lcVal = scale.read() - lcTareOff;
+    lcVal = scale.read() + lcTareOff;
     delay(200);
     //Serial.println("HX711 Reading: " + String(lcVal));
     Serial.println("<<lc><"+String(lcVal)+">>");
   } else if (command.substring(2) == "TARE") {
-    long lcSum = 0;
-    int tareInc = 0;
-    while (tareInc < lcTareCount){
-      lcSum = lcSum + scale.read();
-      delay(200);
-      tareInc = tareInc + 1;
-    }
-    lcTareOff = lcSum / lcTareCount;
+    // long lcSum = 0;
+    // int tareInc = 0;
+    // while (tareInc < lcTareCount){
+    //   lcSum = lcSum + scale.read();
+    //   delay(200);
+    //   tareInc = tareInc + 1;
+    // }
+    // lcTareOff = lcSum / lcTareCount;
+    scale.tare(5);
+    lcTareOff = scale.get_tare();
     Serial.println("<<lc_tare><"+String(lcTareOff)+">>");
   } else if (command.substring(2) == "ALL") {
-    lcVal = scale.read();
-    delay(200);
+    lcVal = scale.read() + lcTareOff;
+    delay(100);
     //Serial.println("HX711 Reading: " + String(lcVal));
     Serial.println("<<lc><"+String(lcVal)+">>");
     // dispSenseVal = analogRead(dispSensePin);
@@ -122,7 +126,7 @@ void handleLCCommand(String command){
     
     if (dir == 'T'){
       handleMotorCommand("MAR200");
-      delay(10);
+      delay(5);
       handleMotorCommand("MAS0");
       if (lcVal >= target){
         cont = false;
@@ -131,9 +135,86 @@ void handleLCCommand(String command){
       }
     }else if (dir == 'C'){
       handleMotorCommand("MAF200");
-      delay(10);
+      delay(5);
       handleMotorCommand("MAS0");
       if (lcVal <= target){
+        cont = false;
+        handleMotorCommand("MAS0");
+        Serial.println("<<lt><end>>");
+      }
+    }
+  }
+}
+
+void handleL2F(String command){
+  // Load to Failure cycle
+  char dir = command.charAt(2);
+  long target = command.substring(3).toInt();
+  bool cont = true;
+  long prev[3] = {0, 0, 0};
+  long cur[3] = {0, 0, 0};
+  long avg_prev;
+  long avg_cur;
+  long change;
+  int thresh_change = -50;
+  int i = 0;
+  bool trig = false;
+  long trig_val = 10000;
+  long init;
+  dir = 'C';
+  while (cont == true) {
+    handleScaleCommand("HXALL");
+    if (i > 0){
+      prev[0] = prev[1];
+      prev[1] = prev[2];
+      prev[2] = cur[0];
+      cur[0] = cur[1];
+      cur[1] = cur[2];
+    } else {
+      init = lcVal;
+    }
+    i += 1;
+    
+    cur[2] = lcVal;
+    avg_prev = (prev[0] + prev[1] + prev[2]) / 3;
+    avg_cur = (cur[0] + cur[1] + cur[2]) / 3;
+    change = (avg_cur - avg_prev) * 100 / avg_prev;
+    if (abs(lcVal) > trig_val && trig == false){
+      trig = true;
+    }
+    if (dir == 'T'){
+      handleMotorCommand("MAR255");
+      // Set motor ON time based on current load
+      if (abs(lcVal) > 750000){
+        delay(10);
+      } else if (abs(lcVal) > 600000){
+        delay(6);
+      } else if (abs(lcVal) > 450000){
+        delay(4);
+      } else {
+        delay(2);
+      }
+
+      handleMotorCommand("MAS0");
+      if (change >= thresh_change && trig == true){
+        cont = false;
+        handleMotorCommand("MAS0");
+        Serial.println("<<lt><end>>");
+      }
+    }else if (dir == 'C'){
+      handleMotorCommand("MAF255");
+      // Set motor ON time based on current load
+      if (abs(lcVal) > 750000){
+        delay(10);
+      } else if (abs(lcVal) > 600000){
+        delay(6);
+      } else if (abs(lcVal) > 400000){
+        delay(4);
+      } else {
+        delay(2);
+      }
+      handleMotorCommand("MAS0");
+      if (change <= thresh_change && trig == true){
         cont = false;
         handleMotorCommand("MAS0");
         Serial.println("<<lt><end>>");

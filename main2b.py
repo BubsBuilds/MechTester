@@ -29,7 +29,7 @@ class mechController:
         self.log_file = "command_log.json"
         self.dbSess = dbComm()
         self.commands_log = []
-        self.dt_jog = .05
+        self.dt_jog = .02
         self.lcCal = -2940 / 4194304
         self.lcVals = []
         self.lcTimes = []
@@ -47,6 +47,7 @@ class mechController:
         return retList
 
     def parse_command(self, message):
+
         # Remove the leading and trailing characters ('<<' and '>>')
         #cleaned_string = message.strip("<<>>")
         cleaned_string = message.split("<<")[1]
@@ -82,8 +83,9 @@ class mechController:
         self.lcTimes.append(self.lcTime)
 
     def tare_scale(self):
-        self.send_command("HXTARE\n")
-        #time.sleep()
+        ret = self.send_command("HXTARE\n")
+        print(f'Tare Offset: {ret[1]}')
+        return ret
 
     def load_test(self, test_name, test_desc, test_part, test_type, test_limit):
         if test_type == 1:
@@ -91,7 +93,7 @@ class mechController:
         elif test_type == 2:
             test_type = "T"
         loop_count = 1
-        cur_limit = test_limit
+        cur_limit = float(test_limit)
         load_dir = "load"
         param_rec = {
             'start_time': time.time(),
@@ -113,19 +115,22 @@ class mechController:
             i = 0
             extras = 50
             # Start by taring the load cell
+            tare_offset = self.tare_scale()
 
             #Set up load test record
-
             dat_rec = {
+                'ts': time.time(),
+                'tare_offset': tare_offset[1],
                 'load_times': [],
-                'disp_times': [],
                 'loads': [],
-                'disps': [],
                 'load_direction': load_dir,
                 'param_rec_id': param_rec_id,
             }
             runL = True
-            self.send_command(f"CL{test_type}{round(cur_limit / self.lcCal)}\n")
+            if cur_limit == -1000:
+                self.send_command(f"LF{test_type}ALL\n")
+            else:
+                self.send_command(f"CL{test_type}{round(cur_limit / self.lcCal)}\n")
             while runL or i <= extras:
                 if self.ser.in_waiting:
                     response = self.ser.readline().decode()
@@ -138,16 +143,16 @@ class mechController:
                         self.lcTimes.append(time.time())
                         print(f"Current load: {load}")
                         dat_rec['loads'].append(load)
-                    elif parsed[0] == 'ds':
-                        dat_rec['disp_times'].append(time.time())
-                        dat_rec['disps'].append(float(parsed[1]))
-                        #print(f"Current Disp: {float(parsed[1])}")
+                    # elif parsed[0] == 'ds':
+                    #     dat_rec['disp_times'].append(time.time())
+                    #     dat_rec['disps'].append(float(parsed[1]))
+                    #     print(f"Current Disp: {float(parsed[1])}")
                     elif parsed[0] == 'lt':
                         param_rec['end_time'] = time.time()
                         if load_dir == "unload":
                             if test_type == "T":
                                 self.set_motor("A", "R", 75)
-                                time.sleep(0.2)
+                                time.sleep(0.02)
                                 self.set_motor("A", "S", 0)
                         runL = False
                     else:
@@ -163,9 +168,9 @@ class mechController:
                         self.lcVals.append(load)
                         self.lcTimes.append(time.time())
                         dat_rec['loads'].append(load)
-                    elif parsed[0] == 'ds':
-                        dat_rec['disp_times'].append(time.time())
-                        dat_rec['disps'].append(float(parsed[1]))
+                    # elif parsed[0] == 'ds':
+                    #     dat_rec['disp_times'].append(time.time())
+                    #     dat_rec['disps'].append(float(parsed[1]))
                     else:
                         print(f"Command error. Parsed received: {parsed}")
 
@@ -228,7 +233,8 @@ with ui.column():
         lt_part = ui.input(placeholder='Part Name').props('rounded outlined dense')
         lt_desc = ui.textarea(value='Test Description').props('clearable')
         lt_type = ui.radio({1: 'Compression', 2: 'Tension'}, value=1).props('inline')
-        lt_limit = ui.slider(min=-500, max=500, value=0)
+        #lt_limit = ui.slider(min=0, max=500, value=0)
+        lt_limit = ui.input(placeholder=0).props('rounded outlined dense')
         ui.label().bind_text_from(lt_limit, 'value')
         ui.button('RUN', on_click=lambda: run_test(mcSess, lt_name.value, lt_desc.value, lt_part.value, lt_type.value, lt_limit.value))
 
